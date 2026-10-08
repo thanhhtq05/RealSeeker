@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RealSeeker – real or AI-generated?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef1f5;
+    --panel: #ffffff;
+    --ink: #14213d;
+    --muted: #5b6678;
+    --line: #d3d9e3;
+    --real: #0e7c7b;
+    --fake: #c2255c;
+    --focus: #2f5bea;
+    --head: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.55 var(--body);
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 {
+    font: 800 clamp(2rem, 5vw, 3.2rem)/1.05 var(--head);
+    letter-spacing: -0.02em; margin: 0 0 12px;
+  }
+  .lead { max-width: 56ch; color: var(--muted); margin: 0 0 32px; }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+
+  .drop {
+    display: grid; place-items: center; text-align: center;
+    min-height: 220px; border: 2px dashed var(--line); border-radius: 8px;
+    padding: 20px; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.over { border-color: var(--ink); background: #f7f9fc; }
+  .drop:focus-visible, .seg button:focus-visible, .go:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .drop strong { font: 600 1.1rem var(--head); display: block; margin-bottom: 4px; }
+  .drop span { color: var(--muted); font-size: .9rem; }
+  input[type=file] { display: none; }
+
+  .seg { display: flex; gap: 0; margin: 16px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    flex: 1; padding: 10px 12px; border: 0; background: transparent; color: var(--ink);
+    font: 500 .9rem var(--body); cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed=true] { background: var(--ink); color: #fff; }
+
+  .go {
+    width: 100%; padding: 12px; border: 0; border-radius: 8px; background: var(--ink); color: #fff;
+    font: 600 1rem var(--body); cursor: pointer;
+  }
+  .go:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* the memorable bit: what the model actually sees */
+  .compare { display: none; gap: 16px; align-items: end; margin-bottom: 16px; }
+  .compare.show { display: flex; }
+  .compare figure { margin: 0; }
+  .compare figcaption { font-size: .85rem; color: var(--muted); margin-top: 6px; max-width: 18ch; }
+  #orig { max-width: 150px; max-height: 150px; border-radius: 4px; display: block; }
+  #px { width: 128px; height: 128px; image-rendering: pixelated; border-radius: 4px; display: block; }
+
+  .verdict { font: 800 1.8rem/1.1 var(--head); letter-spacing: -0.01em; margin: 0 0 4px; }
+  .verdict.real { color: var(--real); }
+  .verdict.fake { color: var(--fake); }
+  .status { color: var(--muted); margin: 0 0 16px; min-height: 1.5em; }
+  .status.err { color: var(--fake); }
+
+  .bar { margin: 12px 0; }
+  .bar .row { display: flex; justify-content: space-between; font-weight: 500; font-size: .95rem; }
+  .track { height: 10px; background: #e6eaf1; border-radius: 5px; overflow: hidden; margin-top: 4px; }
+  .fill { height: 100%; width: 0; transition: width .5s ease; }
+  .fill.real { background: var(--real); }
+  .fill.fake { background: var(--fake); }
+
+  .note { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: .88rem; max-width: 70ch; }
+  @media (prefers-reduced-motion: reduce) { .fill, .drop { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Is this photo real or AI-generated?</h1>
+  <p class="lead">Upload an image and a small PyTorch model gives a probability for each. It looks at a 32×32 version of your picture, so fine detail is lost by design.</p>
+
+  <div class="grid">
+    <section class="panel" aria-label="Upload">
+      <label class="drop" id="drop" tabindex="0" for="file">
+        <div>
+          <strong id="dropTitle">Choose an image</strong>
+          <span>or drag it here. JPG, PNG or WebP.</span>
+        </div>
+      </label>
+      <input type="file" id="file" accept="image/*">
+
+      <div class="seg" role="group" aria-label="Model">
+        <button type="button" data-model="CNN + FFT (dual-branch)" aria-pressed="true">CNN + FFT</button>
+        <button type="button" data-model="Baseline CNN" aria-pressed="false">Baseline CNN</button>
+      </div>
+
+      <button class="go" id="go" disabled>Check image</button>
+    </section>
+
+    <section class="panel" aria-live="polite" aria-label="Result">
+      <div class="compare" id="compare">
+        <figure><img id="orig" alt="Your uploaded image"><figcaption>Your image</figcaption></figure>
+        <figure><canvas id="px" width="32" height="32" aria-label="32 by 32 version"></canvas><figcaption>What the model sees (32×32)</figcaption></figure>
+      </div>
+
+      <p class="verdict" id="verdict">No result yet</p>
+      <p class="status" id="status">Upload an image, then choose Check image.</p>
+
+      <div class="bar"><div class="row"><span>Real</span><span id="pReal">–</span></div><div class="track"><div class="fill real" id="fReal"></div></div></div>
+      <div class="bar"><div class="row"><span>AI-generated</span><span id="pFake">–</span></div><div class="track"><div class="fill fake" id="fFake"></div></div></div>
+    </section>
+  </div>
+
+  <p class="note">Trained on 32×32 images (CIFAKE). About 97.7% accuracy on its own test set, but untested on other AI generators or full-size photos, so treat the result as a demo, not proof.</p>
+</main>
+
+<script type="module">
+  import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js";
+
+  // Hugging Face Space that runs the model
+  const SPACE_ID = "thanhmausac/RealSeeker";
+
+  const $ = (id) => document.getElementById(id);
+  let file = null, modelName = "CNN + FFT (dual-branch)", client = null;
+
+  function setStatus(msg, err = false) {
+    $("status").textContent = msg;
+    $("status").classList.toggle("err", err);
+  }
+
+  function showPreview(f) {
+    const url = URL.createObjectURL(f);
+    const img = $("orig");
+    img.onload = () => {
+      const ctx = $("px").getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, 0, 0, 32, 32);
+    };
+    img.src = url;
+    $("compare").classList.add("show");
+    $("dropTitle").textContent = f.name;
+  }
+
+  function pick(f) {
+    if (!f || !f.type.startsWith("image/")) { setStatus("Choose an image file (JPG, PNG or WebP).", true); return; }
+    file = f;
+    showPreview(f);
+    $("go").disabled = false;
+    $("verdict").textContent = "Ready";
+    $("verdict").className = "verdict";
+    setStatus("Choose Check image to run the model.");
+    setBars(null);
+  }
+
+  function setBars(conf) {
+    const r = conf ? conf.REAL : null, k = conf ? conf.FAKE : null;
+    $("pReal").textContent = r == null ? "–" : (r * 100).toFixed(1) + "%";
+    $("pFake").textContent = k == null ? "–" : (k * 100).toFixed(1) + "%";
+    $("fReal").style.width = r == null ? "0" : (r * 100) + "%";
+    $("fFake").style.width = k == null ? "0" : (k * 100) + "%";
+  }
+
+  $("file").addEventListener("change", (e) => pick(e.target.files[0]));
+  const drop = $("drop");
+  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+  ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => pick(e.dataTransfer.files[0]));
+
+  document.querySelectorAll(".seg button").forEach((b) =>
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+      modelName = b.dataset.model;
+    })
+  );
+
+  $("go").addEventListener("click", async () => {
+    if (!file) return;
+    $("go").disabled = true;
+    $("verdict").textContent = "Checking…";
+    $("verdict").className = "verdict";
+    setBars(null);
+    try {
+      if (!client) {
+        setStatus("Connecting to the model. A sleeping Space can take up to a minute to start.");
+        client = await Client.connect(SPACE_ID);
+      }
+      setStatus("Running the model…");
+      const res = await client.predict("/predict", [file, modelName]);
+      const out = res.data[0];                       // { label, confidences: [{label, confidence}, ...] }
+      const conf = {};
+      out.confidences.forEach((c) => (conf[c.label] = c.confidence));
+      setBars(conf);
+      const isReal = out.label === "REAL";
+      const top = (conf[out.label] * 100).toFixed(1);
+      $("verdict").textContent = isReal ? "Looks real" : "Looks AI-generated";
+      $("verdict").className = "verdict " + (isReal ? "real" : "fake");
+      setStatus(`${top}% confidence · ${modelName}`);
+    } catch (err) {
+      console.error(err);
+      client = null;
+      $("verdict").textContent = "Check failed";
+      setStatus("Could not reach the model. Check that the Space is running and SPACE_ID is correct, then try again.", true);
+    } finally {
+      $("go").disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
