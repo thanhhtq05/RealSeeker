@@ -1,4 +1,4 @@
-# Fake vs Real Photo Detection (32x32)
+# RealSeeker: Fake vs Real Photo Detection (32x32)
 
 A PyTorch pipeline that classifies small 32x32 RGB images as **REAL** or **FAKE** (AI-generated). It compares two architectures on the same data:
 
@@ -6,6 +6,13 @@ A PyTorch pipeline that classifies small 32x32 RGB images as **REAL** or **FAKE*
 2. **Dual-branch model**: the same CNN plus a frequency-domain branch (2D FFT) whose features are fused with the CNN features.
 
 Both models are trained, evaluated and compared on a 20,000-image held-out test set.
+
+## Live demo
+
+- Web demo: https://fakedetection-psi.vercel.app
+- Model host (Hugging Face Space): https://huggingface.co/spaces/thanhmausac/RealSeeker
+
+The web page is a static `index.html` on Vercel that sends the uploaded image to the Gradio app (`app.py`) running on the Hugging Face Space, which returns the REAL/FAKE probabilities. The model only sees a 32x32 version of the upload, so treat the output as a demo (see Limitations).
 
 ## Results
 
@@ -25,7 +32,7 @@ Evaluated on the test set (20,000 images, 10,000 per class).
 
 ## Dataset
 
-Expected layout (`torchvision.datasets.ImageFolder`):
+The data is the CIFAKE dataset (real CIFAR-10 images vs AI-generated counterparts), arranged for `torchvision.datasets.ImageFolder`:
 
 ```
 Fake_vs_Real_Photo/
@@ -74,6 +81,9 @@ Input (3, 32, 32)
 ├── evaluate.py     # Report, confusion matrix, ROC-AUC, recall-FAKE threshold table
 ├── tune.py         # Optuna hyperparameter search (optional)
 ├── analysis.py     # Worst-error gallery and Grad-CAM
+├── app.py          # Gradio app served on the Hugging Face Space
+├── index.html      # Static web UI (Vercel) that calls the Space
+├── requirements.txt  # Only what the Space needs (training deps are in Setup below)
 └── README.md
 ```
 
@@ -118,6 +128,15 @@ python analysis.py --checkpoint best_baseline.pt --data-root G:/ML/files/Fake_vs
 # 6. (Optional) Hyperparameter search
 python tune.py --data-root G:/ML/files/Fake_vs_Real_Photo --n-trials 20
 ```
+
+## Run the web demo locally
+
+```powershell
+pip install gradio torch pillow numpy
+python app.py
+```
+
+Open the printed local URL, upload an image and pick a model. `app.py` loads `best_baseline.pt` and `best_dual.pt` from the repo root and applies the same preprocessing as `transforms.py` (resize to 32x32, normalize with the training mean/std).
 
 ## Training setup
 
